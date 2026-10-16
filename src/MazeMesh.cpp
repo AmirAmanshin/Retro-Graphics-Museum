@@ -69,6 +69,34 @@ void MazeMesh::build(const std::vector<std::vector<int>>& grid)
                     indices.push_back(cubeIndices[i] + baseIdx);
                 }
             }
+            else if (grid[z][x] == 2) { 
+                // Visual representation of the exit point
+                unsigned int baseIdx = vertices.size() / 3;
+                float m = 0.3f; // margin to make the exit smaller than a full block
+                
+                float x0 = x * blockSize + m;
+                float x1 = x0 + blockSize - m * 2;
+                float y0 = m;          
+                float y1 = blockSize - m;     
+                float z0 = z * blockSize + m;
+                float z1 = z0 + blockSize - m * 2;
+
+                float exitVertices[] = {
+                    x0, y0, z1,  x1, y0, z1,  x1, y1, z1,  x0, y1, z1, // Front
+                    x0, y0, z0,  x1, y0, z0,  x1, y1, z0,  x0, y1, z0  // Back
+                };
+                vertices.insert(vertices.end(), exitVertices, exitVertices + 24);
+
+                unsigned int lineIndices[] = {
+                    0, 1,  1, 2,  2, 3,  3, 0,
+                    4, 5,  5, 6,  6, 7,  7, 4,
+                    0, 4,  1, 5,  2, 6,  3, 7
+                };
+
+                for (unsigned int i = 0; i < 24; ++i) {
+                    indices.push_back(lineIndices[i] + baseIdx);
+                }
+            }
         }
     }
 
