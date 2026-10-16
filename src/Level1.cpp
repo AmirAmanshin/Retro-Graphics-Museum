@@ -1,4 +1,5 @@
 #include "Levels/Level1.hpp"
+#include "Levels/Level2.hpp"
 #include <iostream>
 #include <cmath>
 
@@ -37,7 +38,8 @@ bool Level1::checkCollision(float x, float z) {
     int minZ = static_cast<int>(z - radius);
     int maxZ = static_cast<int>(z + radius);
     
-    if (minX < 0 || maxX >= grid[0].size() || minZ < 0 || maxZ >= grid.size()) return true;
+    if (minX < 0 || maxX >= static_cast<int>(grid[0].size()) || 
+        minZ < 0 || maxZ >= static_cast<int>(grid.size())) return true;
     
     if (grid[minZ][minX] == 1) return true;
     if (grid[minZ][maxX] == 1) return true;
@@ -130,18 +132,17 @@ void Level1::processInput(GLFWwindow* window, float deltaTime) {
 }
 
 void Level1::update(float deltaTime) {
+    (void)deltaTime;
     const auto& grid = maze->getGrid();
     int playerGridX = static_cast<int>(camera.Position.x);
     int playerGridZ = static_cast<int>(camera.Position.z);
 
-    if (playerGridZ >= 0 && playerGridZ < grid.size() && 
-        playerGridX >= 0 && playerGridX < grid[0].size()) {
+    if (playerGridZ >= 0 && playerGridZ < static_cast<int>(grid.size()) && 
+        playerGridX >= 0 && playerGridX < static_cast<int>(grid[0].size())) {
         
         if (grid[playerGridZ][playerGridX] == 2) {
-            std::cout << "Level 1 done!" << std::endl;
-            
-            // TODO: Transition to Level 2
-            glfwSetWindowShouldClose(glfwGetCurrentContext(), true);
+            std::cout << "Level 1 done! Transitioning to Level 2..." << std::endl;
+            gameEngine->changeLevel(new Level2(gameEngine));
         }
     }
 }
@@ -149,6 +150,8 @@ void Level1::update(float deltaTime) {
 void Level1::render() {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glEnable(GL_DEPTH_TEST);
 
     shader->use();
 
@@ -170,7 +173,7 @@ void Level1::render() {
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(1.0f, 1.0f);
     shader->setVec4("color", 0.0f, 0.0f, 0.0f, 1.0f);
-    mazeMesh->draw();
+    mazeMesh->drawSolid();
     glDisable(GL_POLYGON_OFFSET_FILL);
 
     // 2. Green wireframe for walls

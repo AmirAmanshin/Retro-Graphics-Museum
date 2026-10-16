@@ -62,10 +62,10 @@ void Level2::init() {
     mazeMesh->buildTextured(maze->getGrid());
 
     // Загрузка 4 текстур из папки textures/ (строгое соответствие индексам батчей)
-    textures.push_back(loadTexture("textures/level2/wall1.png")); // texIndex 0
-    textures.push_back(loadTexture("textures/level2/wall2.png")); // texIndex 1
-    textures.push_back(loadTexture("textures/level2/wall3.png")); // texIndex 2
-    textures.push_back(loadTexture("textures/level2/exit.png"));  // texIndex 3
+    textures.push_back(loadTexture("textures/Level2/wall1.png")); // texIndex 0
+    textures.push_back(loadTexture("textures/Level2/wall2.png")); // texIndex 1
+    textures.push_back(loadTexture("textures/Level2/wall3.png")); // texIndex 2
+    textures.push_back(loadTexture("textures/Level2/exit.png"));  // texIndex 3
 
     shader->use();
     shader->setInt("texWall1", 0);
