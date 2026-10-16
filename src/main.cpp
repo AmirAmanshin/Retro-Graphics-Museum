@@ -1,5 +1,5 @@
-#include "Engine.hpp"
-#include "Level1.hpp"
+#include "Engine/Engine.hpp"
+#include "Levels/Level1.hpp"
 
 int main() {
     Engine engine(1270, 720, "Retro Graphics Museum");

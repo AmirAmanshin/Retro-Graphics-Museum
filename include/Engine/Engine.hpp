@@ -1,7 +1,7 @@
 #pragma once
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include "Level.hpp"
+#include "Levels/Level.hpp"
 
 class Engine {
 public:

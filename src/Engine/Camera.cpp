@@ -1,4 +1,4 @@
-#include <Camera.hpp>
+#include <Engine/Camera.hpp>
 
 Camera::Camera(glm::vec3 position) : Position(position), Yaw(-90.0f), Pitch(0.0f), MovementSpeed(2.5f), MouseSensitivity(0.1f), WorldUp(glm::vec3(0.0f, 1.0f, 0.0f)) {
     updateCameraVectors();

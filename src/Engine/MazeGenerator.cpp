@@ -1,4 +1,4 @@
-#include "MazeGenerator.hpp"
+#include "Engine/MazeGenerator.hpp"
 #include <iostream>
 #include <algorithm>
 #include <random>

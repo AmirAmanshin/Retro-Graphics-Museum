@@ -1,10 +1,10 @@
 #pragma once
-#include <Level.hpp>
-#include <Engine.hpp>
-#include <MazeGenerator.hpp>
-#include <MazeMesh.hpp>
-#include <Shader.hpp>
-#include <Camera.hpp>
+#include <Levels/Level.hpp>
+#include <Engine/Engine.hpp>
+#include <Engine/MazeGenerator.hpp>
+#include <Engine/MazeMesh.hpp>
+#include <Engine/Shader.hpp>
+#include <Engine/Camera.hpp>
 
 class Level1 : public Level {
 public:
