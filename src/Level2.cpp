@@ -1,17 +1,21 @@
 #include "Levels/Level2.hpp"
 #include "Engine/stb_image.h"
 #include <iostream>
-#include <cmath>
 
 Level2::Level2(Engine* engine) 
     : gameEngine(engine), shader(nullptr), maze(nullptr), mazeMesh(nullptr), 
+      audio(nullptr), compassShader(nullptr),
       firstMouse(true), lastX(635.0f), lastY(360.0f),
-      noclip(false), fKeyPressed(false) {}
+      noclip(false), fKeyPressed(false), compassVAO(0), compassVBO(0) {}
 
 Level2::~Level2() {
     if (shader) delete shader;
     if (maze) delete maze;
     if (mazeMesh) delete mazeMesh;
+    if (compassShader) delete compassShader;
+    if (compassVAO) glDeleteVertexArrays(1, &compassVAO);
+    if (compassVBO) glDeleteBuffers(1, &compassVBO);
+    if (audio) delete audio; // Очищаем звук; деструктор Audio остановит музыку сам
     
     // Очистка всех загруженных текстур
     for (GLuint tex : textures) {
@@ -55,7 +59,7 @@ void Level2::init() {
 
     shader = new Shader("shaders/level2.vert", "shaders/level2.frag");
 
-    maze = new MazeGenerator(21, 21);
+    maze = new MazeGenerator(25, 25);
     maze->generate();
 
     mazeMesh = new MazeMesh();
@@ -72,6 +76,30 @@ void Level2::init() {
     shader->setInt("texWall2", 1);
     shader->setInt("texWall3", 2);
     shader->setInt("texExit", 3);
+
+    compassShader = new Shader("shaders/compass.vert", "shaders/compass.frag");
+
+    float compassVertices[] = {
+         0.0f,  15.0f, // Острие (указывает вверх)
+        -10.0f, -10.0f, // Левый нижний угол
+         10.0f, -10.0f  // Правый нижний угол
+    };
+
+    glGenVertexArrays(1, &compassVAO);
+    glGenBuffers(1, &compassVBO);
+    
+    glBindVertexArray(compassVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, compassVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(compassVertices), compassVertices, GL_STATIC_DRAW);
+    
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    
+    glBindVertexArray(0);
+
+    // --- Запуск звука ---
+    audio = new Audio(1);
+    audio->playMusic("sounds/Level2/Music.mp3");
 }
 
 bool Level2::checkCollision(float x, float z) {
@@ -138,10 +166,19 @@ void Level2::processInput(GLFWwindow* window, float deltaTime) {
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) moveDir -= camera.Right;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) moveDir += camera.Right;
 
+    static float stepTimer = 0.4f; // Таймер для звука шагов
+
     if (glm::length(moveDir) > 0.0f) {
         if (noclip) {
             camera.Position += glm::normalize(moveDir) * velocity;
         } else {
+            // Звук шагов Эры 2
+            stepTimer += deltaTime;
+            if (stepTimer > 0.4f) {
+                audio->playSound("sounds/Level2/Step.wav");
+                stepTimer = 0.0f;
+            }
+
             // Векторное скольжение по стенам
             moveDir.y = 0.0f;
             moveDir = glm::normalize(moveDir) * velocity;
@@ -153,6 +190,9 @@ void Level2::processInput(GLFWwindow* window, float deltaTime) {
                 camera.Position.z += moveDir.z;
             }
         }
+    } else {
+        // Чтобы шаг зазвучал сразу же при начале нового движения
+        stepTimer = 0.4f;
     }
 }
 
@@ -209,4 +249,40 @@ void Level2::render() {
 
     // Передаем массив загруженных текстур в меш
     mazeMesh->drawTextured(textures);
+
+    // --- Отрисовка компаса (HUD) ---
+    glDisable(GL_DEPTH_TEST); // Отключаем тест глубины, чтобы компас был поверх стен
+
+    compassShader->use();
+    // Ортографическая проекция по размерам окна
+    glm::mat4 orthoProj = glm::ortho(0.0f, (float)width, 0.0f, (float)height);
+    compassShader->setMat4("projection", orthoProj);
+
+    // 1. Получаем мировые координаты центра клетки выхода
+    float exitX = maze->getExitX() * 1.0f + 0.5f;
+    float exitZ = maze->getExitY() * 1.0f + 0.5f;
+    
+    // 2. Рассчитываем вектор к выходу и угол
+    float dirX = exitX - camera.Position.x;
+    float dirZ = exitZ - camera.Position.z;
+    float angleToExit = std::atan2(dirZ, dirX);
+    float cameraAngle = glm::radians(camera.Yaw);
+    
+    // Угол поворота стрелки
+    float rotation = cameraAngle - angleToExit;
+
+    // 3. Формируем Model матрицу (размещение в правом нижнем углу)
+    glm::mat4 modelCompass = glm::mat4(1.0f);
+    modelCompass = glm::translate(modelCompass, glm::vec3(width - 70.0f, 70.0f, 0.0f));
+    modelCompass = glm::scale(modelCompass, glm::vec3(1.5f, 1.5f, 1.0f)); 
+    modelCompass = glm::rotate(modelCompass, rotation, glm::vec3(0.0f, 0.0f, 1.0f)); 
+    
+    compassShader->setMat4("model", modelCompass);
+
+    // Отрисовка компаса
+    glBindVertexArray(compassVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    glEnable(GL_DEPTH_TEST); // Включаем обратно
 }

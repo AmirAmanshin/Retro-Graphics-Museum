@@ -1,10 +1,11 @@
 #pragma once
-#include <Levels/Level.hpp>
-#include <Engine/Engine.hpp>
-#include <Engine/MazeGenerator.hpp>
-#include <Engine/MazeMesh.hpp>
-#include <Engine/Shader.hpp>
-#include <Engine/Camera.hpp>
+#include "Level.hpp"
+#include "Engine/Engine.hpp"
+#include "Engine/MazeGenerator.hpp"
+#include "Engine/MazeMesh.hpp"
+#include "Engine/Shader.hpp"
+#include "Engine/Camera.hpp"
+#include "Engine/Audio.hpp"
 
 class Level1 : public Level {
 public:
@@ -22,6 +23,7 @@ private:
     Shader* shader;
     MazeGenerator* maze;
     MazeMesh* mazeMesh;
+    Audio* audio;
 
     glm::vec3 targetPos;
     float targetYaw;

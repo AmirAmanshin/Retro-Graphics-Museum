@@ -1,5 +1,6 @@
 #include "Levels/Level1.hpp"
 #include "Levels/Level2.hpp"
+#include "Engine/Audio.hpp"
 #include <iostream>
 #include <cmath>
 
@@ -11,6 +12,7 @@ Level1::~Level1() {
     if (shader) delete shader;
     if (maze) delete maze;
     if (mazeMesh) delete mazeMesh;
+    if (audio) delete audio;
 }
 
 void Level1::init() {
@@ -27,6 +29,7 @@ void Level1::init() {
 
     mazeMesh = new MazeMesh();
     mazeMesh->build(maze->getGrid());
+    audio = new Audio();
 }
 
 bool Level1::checkCollision(float x, float z) {
@@ -96,8 +99,12 @@ void Level1::processInput(GLFWwindow* window, float deltaTime) {
     // Rules for Level 1
     
     // Longing neck
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) targetPos.y = 2.0f;
-    else targetPos.y = 0.5f;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        if (targetPos.y == 0.5f) audio->play(SfxType::NECK); // Звук только в момент поднятия
+        targetPos.y = 2.0f;
+    } else {
+        targetPos.y = 0.5f;
+    }
 
     bool isAtTarget = (glm::distance(glm::vec3(camera.Position.x, 0.0f, camera.Position.z), 
                                      glm::vec3(targetPos.x, 0.0f, targetPos.z)) < 0.01f) && 
@@ -106,8 +113,14 @@ void Level1::processInput(GLFWwindow* window, float deltaTime) {
     if (isAtTarget) {
         camera.SetPose(glm::vec3(targetPos.x, camera.Position.y, targetPos.z), targetYaw);
 
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) targetYaw -= 90.0f;
-        else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) targetYaw += 90.0f;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            targetYaw -= 90.0f;
+            audio->play(SfxType::TURN); // Звук поворота налево
+        }
+        else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            targetYaw += 90.0f;
+            audio->play(SfxType::TURN); // Звук поворота направо
+        }
         else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
             
             glm::vec3 forward = glm::vec3(cos(glm::radians(targetYaw)), 0.0f, sin(glm::radians(targetYaw)));
@@ -120,6 +133,9 @@ void Level1::processInput(GLFWwindow* window, float deltaTime) {
             if (!checkCollision(nextPos.x, nextPos.z)) {
                 targetPos.x = nextPos.x;
                 targetPos.z = nextPos.z;
+                audio->play(SfxType::STEP); // Успешный шаг
+            } else {
+                audio->play(SfxType::BUMP); // Удар о стену
             }
         }
     }

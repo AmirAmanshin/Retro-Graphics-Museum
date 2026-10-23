@@ -6,6 +6,7 @@
 #include "Engine/MazeMesh.hpp"
 #include "Engine/Shader.hpp"
 #include "Engine/Camera.hpp"
+#include "Engine/Audio.hpp" // Подключаем звуковой движок
 
 class Level2 : public Level {
 public:
@@ -23,6 +24,10 @@ private:
     Shader* shader;
     MazeGenerator* maze;
     MazeMesh* mazeMesh;
+    Audio* audio; // Указатель на звуковой движок
+
+    Shader* compassShader;
+    GLuint compassVAO, compassVBO;
 
     std::vector<GLuint> textures; // Массив всех загруженных текстур
 

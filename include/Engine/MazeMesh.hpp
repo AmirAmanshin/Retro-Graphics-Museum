@@ -1,7 +1,7 @@
 #pragma once
 #include <glad/glad.h>
 #include <vector>
-#include <cstdint>
+
 
 struct BatchInfo {
     unsigned int offset = 0;
