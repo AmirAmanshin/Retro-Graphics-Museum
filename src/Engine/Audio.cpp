@@ -1,3 +1,4 @@
+#define _USE_MATH_DEFINES
 #include "Engine/Audio.hpp"
 #include "Engine/miniaudio.h"
 #include <cmath>
