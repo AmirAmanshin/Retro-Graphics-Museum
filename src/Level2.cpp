@@ -1,9 +1,10 @@
 #include "Levels/Level2.hpp"
 #include "Engine/stb_image.h"
 #include <iostream>
+#include "Levels/Level3.hpp"
 
 Level2::Level2(Engine* engine) 
-    : gameEngine(engine), shader(nullptr), maze(nullptr), mazeMesh(nullptr), 
+    : gameEngine(   engine), shader(nullptr), maze(nullptr), mazeMesh(nullptr), 
       audio(nullptr), compassShader(nullptr),
       firstMouse(true), lastX(635.0f), lastY(360.0f),
       noclip(false), fKeyPressed(false), compassVAO(0), compassVBO(0) {}
@@ -210,7 +211,8 @@ void Level2::update(float deltaTime) {
             std::cout << "УРОВЕНЬ 2 ПРОЙДЕН! Вы прошли Эру 2!" << std::endl;
             std::cout << "=================================" << std::endl;
             // Здесь в будущем будет инициализация Level3
-            glfwSetWindowShouldClose(glfwGetCurrentContext(), true);
+            gameEngine->changeLevel(new Level3(gameEngine));
+                return;
         }
     }
 }

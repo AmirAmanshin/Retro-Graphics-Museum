@@ -41,3 +41,5 @@ $(TARGET): $(OBJS)
 clean:
 	-$(RM_CMD) $(CLEAN_OBJS)
 	-$(RM_CMD) $(TARGET)
+
+-include $(OBJ:.o=.d)

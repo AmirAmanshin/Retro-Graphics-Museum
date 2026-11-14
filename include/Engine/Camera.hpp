@@ -1,7 +1,15 @@
-#pragma once
+﻿#pragma once
+
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+enum Camera_Movement {
+    FORWARD,
+    BACKWARD,
+    LEFT,
+    RIGHT
+};
 
 class Camera {
 public:
@@ -15,14 +23,26 @@ public:
     float Pitch;
     float MovementSpeed;
     float MouseSensitivity;
+    float Zoom;
 
-    Camera(glm::vec3 position = glm::vec3(0.0f, 0.5f, 0.0f));
+    bool AllowPitch;
+    float EyeHeight;
+    float VerticalVelocity;
+    float Gravity;
+    float JumpForce;
+    bool IsGrounded;
+
+    Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
+           glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f),
+           float yaw = -90.0f,
+           float pitch = 0.0f);
+
     glm::mat4 GetViewMatrix() const;
-    
-    // 0 = forward, 1 = backward, 2 = left, 3 = right
-    void ProcessKeyboard(int direction, float deltaTime);
+    void ProcessKeyboard(Camera_Movement direction, float deltaTime);
     void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true);
-    void SetPose(glm::vec3 pos, float yaw);
+    void Jump();
+    void UpdatePhysics(float deltaTime);
+    void SetPose(glm::vec3 pos, float yaw, float pitch = 0.0f);
 
 private:
     void updateCameraVectors();
