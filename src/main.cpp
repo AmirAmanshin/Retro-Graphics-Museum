@@ -2,7 +2,7 @@
 #include "Levels/Level1.hpp"
 
 int main() {
-    Engine engine(1270, 720, "Retro Graphics Museum");
+    Engine engine(1280, 720, "Retro Graphics Museum");
     
     if (engine.init()) {
         engine.changeLevel(new Level1(&engine));

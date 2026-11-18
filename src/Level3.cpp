@@ -1,4 +1,5 @@
 #include "Levels/Level3.hpp"
+#include "Levels/Level4.hpp"
 #include "Engine/stb_image.h"
 #include <iostream>
 #include <random>
@@ -362,7 +363,7 @@ void Level3::update(float deltaTime) {
             std::cout << "=================================" << std::endl;
             std::cout << "УРОВЕНЬ 3 ПРОЙДЕН! Вы прошли игру!" << std::endl;
             std::cout << "=================================" << std::endl;
-            glfwSetWindowShouldClose(glfwGetCurrentContext(), true);
+            gameEngine->changeLevel(new Level4(gameEngine));
         }
     }
 }

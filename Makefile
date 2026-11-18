@@ -1,30 +1,29 @@
 CXX = g++
 CC = gcc
 
-CXXFLAGS = -std=c++17 -Iinclude -Wall -Wextra -g
-CFLAGS = -Iinclude -g
+CXXFLAGS = -std=c++17 -Iinclude -Wall -Wextra -g -MMD -MP
+CFLAGS = -Iinclude -g -MMD -MP
 
-# 1. Кроссплатформенная рекурсивная функция поиска файлов вместо shell find
 rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 
 CXX_SRCS = $(call rwildcard,src,*.cpp)
 C_SRCS = $(call rwildcard,src,*.c)
 
 OBJS = $(CXX_SRCS:.cpp=.o) $(C_SRCS:.c=.o)
+DEPS = $(OBJS:.o=.d)
 
-# 2. Определение ОС и настройка платформозависимых переменных
 ifeq ($(OS),Windows_NT)
     TARGET = app.exe
     LDFLAGS = -lglfw3 -lgdi32 -lopengl32
-    # Настройки для очистки в командной строке Windows (cmd)
     RM_CMD = del /Q /F
     CLEAN_OBJS = $(subst /,\,$(OBJS))
+    CLEAN_DEPS = $(subst /,\,$(DEPS))
 else
     TARGET = app
     LDFLAGS = -lglfw -lGL -ldl
-    # Настройки для очистки в Linux
     RM_CMD = rm -f
     CLEAN_OBJS = $(OBJS)
+    CLEAN_DEPS = $(DEPS)
 endif
 
 all: $(TARGET)
@@ -40,6 +39,7 @@ $(TARGET): $(OBJS)
 
 clean:
 	-$(RM_CMD) $(CLEAN_OBJS)
+	-$(RM_CMD) $(CLEAN_DEPS)
 	-$(RM_CMD) $(TARGET)
 
--include $(OBJ:.o=.d)
+-include $(DEPS)

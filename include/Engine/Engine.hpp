@@ -1,7 +1,9 @@
 #pragma once
+#include <string>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include "Levels/Level.hpp"
+#include "Engine/HudOverlay.hpp"
 
 class Engine {
 public:
@@ -17,6 +19,10 @@ private:
     const char* title;
     GLFWwindow* window;
     Level* currentLevel;
+    HudOverlay hud;
+    int currentLevelIndex;
+    std::string currentLevelName;
+    bool hKeyPressed;
 
     static void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 };
