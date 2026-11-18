@@ -16,5 +16,14 @@ void main() {
     FragPos = worldPos.xyz;
     TexCoords = aTexCoords;
     Normal = mat3(transpose(inverse(model))) * aNormal;
-    gl_Position = projection * view * worldPos;
+
+    vec4 clipPos = projection * view * worldPos;
+
+    vec4 snapped = clipPos;
+    snapped.xyz = clipPos.xyz / clipPos.w;
+    vec2 snapGrid = vec2(100.0, 75.0);
+    snapped.xy = floor(snapGrid * snapped.xy) / snapGrid;
+    snapped.xyz *= clipPos.w;
+
+    gl_Position = snapped;
 }

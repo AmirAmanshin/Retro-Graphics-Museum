@@ -1,5 +1,6 @@
 #include "Levels/Level2.hpp"
 #include "Engine/stb_image.h"
+#include "Levels/MainMenuLevel.hpp"
 #include <iostream>
 #include "Levels/Level3.hpp"
 
@@ -125,7 +126,8 @@ bool Level2::checkCollision(float x, float z) {
 
 void Level2::processInput(GLFWwindow* window, float deltaTime) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, true);
+        gameEngine->changeLevel(new MainMenuLevel(gameEngine));
+        return;
     }
 
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {

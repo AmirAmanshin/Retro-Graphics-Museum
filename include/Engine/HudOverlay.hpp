@@ -14,7 +14,14 @@ public:
     bool isVisible() const { return visible; }
 
     void render(int windowWidth, int windowHeight, float fps, float frameMs,
-                int levelIndex, const std::string& levelLabel, const std::string& statusHint = "");
+                int levelIndex, const std::string& levelLabel,
+                const std::string& statusHint = "",
+                bool canonicalFpsMode = true, float targetFps = 60.0f);
+
+    void drawRoundedBox(float x, float y, float w, float h, float radius,
+                        glm::vec4 fill, glm::vec4 border, const glm::mat4& proj);
+    void drawText(const std::string& text, float x, float y, float scale,
+                  glm::vec4 color, const glm::mat4& proj);
 
 private:
     Shader* hudShader;
@@ -24,8 +31,4 @@ private:
     bool visible;
 
     void createFontTexture();
-    void drawRoundedBox(float x, float y, float w, float h, float radius,
-                        glm::vec4 fill, glm::vec4 border, const glm::mat4& proj);
-    void drawText(const std::string& text, float x, float y, float scale,
-                  glm::vec4 color, const glm::mat4& proj);
 };

@@ -93,8 +93,7 @@ void main() {
     vec3 norm = normalize(Normal);
     vec3 viewDir = normalize(viewPos - FragPos);
 
-    // Почти полная темнота без источников света
-    vec3 result = vec3(0.018, 0.020, 0.024) * baseColor;
+    vec3 result = vec3(0.015, 0.017, 0.020) * baseColor;
 
     result += CalcSpotLight(flashlight, norm, FragPos, viewDir, baseColor);
     for (int i = 0; i < NR_POINT_LIGHTS; ++i) {
@@ -102,8 +101,8 @@ void main() {
     }
 
     float dist = length(viewPos - FragPos);
-    float fogFactor = clamp((13.0 - dist) / (13.0 - 1.5), 0.0, 1.0);
-    vec3 fogColor = vec3(0.008, 0.008, 0.012);
+    float fogFactor = clamp((10.5 - dist) / (10.5 - 1.2), 0.0, 1.0);
+    vec3 fogColor = vec3(0.006, 0.006, 0.010);
     result = mix(fogColor, result, fogFactor);
 
     FragColor = vec4(result, 1.0);

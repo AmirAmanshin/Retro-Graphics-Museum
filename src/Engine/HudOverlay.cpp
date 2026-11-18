@@ -64,6 +64,13 @@ static std::array<uint8_t, 8> GetGlyph8x8(char c) {
         case '(': return {0x0C,0x18,0x30,0x30,0x30,0x18,0x0C,0x00};
         case ')': return {0x30,0x18,0x0C,0x0C,0x0C,0x18,0x30,0x00};
         case '!': return {0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00};
+        case ',': return {0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x30};
+        case '+': return {0x00,0x18,0x18,0x7E,0x18,0x18,0x00,0x00};
+        case '>': return {0x30,0x18,0x0C,0x06,0x0C,0x18,0x30,0x00};
+        case '<': return {0x0C,0x18,0x30,0x60,0x30,0x18,0x0C,0x00};
+        case '&': return {0x38,0x6C,0x38,0x76,0xDC,0xCC,0x76,0x00};
+        case '*': return {0x00,0x66,0x3C,0xFF,0x3C,0x66,0x00,0x00};
+        case '_': return {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF};
         default:  return {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
     }
 }
@@ -183,7 +190,9 @@ void HudOverlay::drawText(const std::string& text, float x, float y, float scale
 }
 
 void HudOverlay::render(int windowWidth, int windowHeight, float fps, float frameMs,
-                        int levelIndex, const std::string& levelLabel, const std::string& statusHint) {
+                        int levelIndex, const std::string& levelLabel,
+                        const std::string& statusHint,
+                        bool canonicalFpsMode, float targetFps) {
     if (!visible || !hudShader) return;
 
     GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
@@ -191,7 +200,6 @@ void HudOverlay::render(int windowWidth, int windowHeight, float fps, float fram
     GLint prevPolygonMode[2] = { GL_FILL, GL_FILL };
     glGetIntegerv(GL_POLYGON_MODE, prevPolygonMode);
 
-    // Принудительно включаем заливку полигонов (на случай Level1 с GL_LINE)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -200,20 +208,25 @@ void HudOverlay::render(int windowWidth, int windowHeight, float fps, float fram
     glm::mat4 proj = glm::ortho(0.0f, static_cast<float>(windowWidth),
                                 static_cast<float>(windowHeight), 0.0f);
 
-    char fpsLine[64];
-    std::snprintf(fpsLine, sizeof(fpsLine), "FPS: %.0f  (%.1f MS)", fps, frameMs);
+    char fpsLine[96];
+    std::snprintf(fpsLine, sizeof(fpsLine), "FPS: %.0f (%.1f MS) [%s: %.0f]",
+                  fps, frameMs, canonicalFpsMode ? "CANON" : "STD", targetFps);
 
     std::vector<std::string> lines;
     lines.push_back("[WASD] MOVE   [SPACE] JUMP");
     if (levelIndex == 4) {
+        lines.push_back("[TAB] HOLD PDA  [SHIFT] SPRINT");
         lines.push_back("[F] FLASHLIGHT  [E] INTERACT");
         lines.push_back("[1-4] LEVELS    [N] NOCLIP");
+    } else if (levelIndex == 3) {
+        lines.push_back("[LMB] SHOTGUN   [R] RELOAD");
+        lines.push_back("[F] NOCLIP      [1-4] LEVELS");
     } else {
         lines.push_back("[F] NOCLIP      [1-4] LEVELS");
     }
-    lines.push_back("[H] HIDE HUD    [ESC] QUIT");
+    lines.push_back("[C] FPS MODE    [H] HIDE HUD");
+    lines.push_back("[ESC] QUIT");
 
-    // Автоподбор ширины плашки под самую длинную строку с равными отступами
     float maxContentW = static_cast<float>(std::string(fpsLine).size()) * 8.0f * 1.85f;
     maxContentW = std::max(maxContentW, static_cast<float>(levelLabel.size()) * 8.0f * 1.35f);
     for (const auto& l : lines) {

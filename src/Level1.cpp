@@ -1,5 +1,6 @@
 #include "Levels/Level1.hpp"
 #include "Levels/Level2.hpp"
+#include "Levels/MainMenuLevel.hpp"
 #include "Engine/Audio.hpp"
 #include <iostream>
 #include <cmath>
@@ -53,8 +54,9 @@ bool Level1::checkCollision(float x, float z) {
 }
 
 void Level1::processInput(GLFWwindow* window, float deltaTime) {
-    if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, true);
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        gameEngine->changeLevel(new MainMenuLevel(gameEngine));
+        return;
     }
 
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
