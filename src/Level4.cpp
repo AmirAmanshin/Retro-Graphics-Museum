@@ -2,6 +2,7 @@
 #include "Engine/stb_image.h"
 #include "Levels/MainMenuLevel.hpp"
 #include "Levels/CreditsLevel.hpp"
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <random>
 #include <algorithm>
@@ -9,6 +10,178 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+
+namespace {
+
+std::string ResolveAssetPath4(const std::string& relPath) {
+    if (std::filesystem::exists(relPath)) return relPath;
+    std::string parentPath = "../" + relPath;
+    if (std::filesystem::exists(parentPath)) return parentPath;
+    return relPath;
+}
+
+struct MonsterBillboardRenderer {
+    GLuint program = 0;
+    GLuint vao = 0;
+    GLuint vbo = 0;
+
+    void init() {
+        if (program != 0) return;
+
+        const char* vsSrc = R"(
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec2 aTexCoords;
+
+            out vec2 TexCoords;
+            out vec3 WorldPos;
+
+            uniform mat4 projection;
+            uniform mat4 view;
+            uniform mat4 model;
+
+            void main() {
+                vec4 wp = model * vec4(aPos, 1.0);
+                WorldPos = wp.xyz;
+                TexCoords = aTexCoords;
+                gl_Position = projection * view * wp;
+            }
+        )";
+
+        const char* fsSrc = R"(
+            #version 330 core
+            out vec4 FragColor;
+
+            in vec2 TexCoords;
+            in vec3 WorldPos;
+
+            uniform sampler2D uMonsterTex;
+            uniform vec3 uCamPos;
+            uniform vec3 uCamDir;
+            uniform int uFlashlightOn;
+
+            void main() {
+                vec4 texColor = texture(uMonsterTex, TexCoords);
+                if (texColor.a < 0.15) {
+                    discard;
+                }
+
+                float dist = length(uCamPos - WorldPos);
+                float atten = 1.0 / (1.0 + 0.14 * dist + 0.07 * dist * dist);
+
+                float spot = 0.0;
+                if (uFlashlightOn == 1) {
+                    vec3 toFrag = normalize(WorldPos - uCamPos);
+                    float theta = dot(toFrag, normalize(uCamDir));
+                    spot = clamp((theta - 0.93) / (0.97 - 0.93), 0.0, 1.0);
+                }
+
+                float light = clamp(0.24 * atten + 0.90 * spot * atten, 0.10, 1.0);
+                float emissive = step(0.55, texColor.r - texColor.g);
+                vec3 finalColor = mix(texColor.rgb * light, texColor.rgb, emissive * 0.85);
+
+                FragColor = vec4(finalColor, 1.0);
+            }
+        )";
+
+        auto compile = [](GLenum type, const char* src) -> GLuint {
+            GLuint s = glCreateShader(type);
+            glShaderSource(s, 1, &src, nullptr);
+            glCompileShader(s);
+            GLint ok = 0;
+            glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+            if (!ok) {
+                char log[512];
+                glGetShaderInfoLog(s, 512, nullptr, log);
+                std::cout << "Monster shader compile error: " << log << std::endl;
+            }
+            return s;
+        };
+
+        GLuint vs = compile(GL_VERTEX_SHADER, vsSrc);
+        GLuint fs = compile(GL_FRAGMENT_SHADER, fsSrc);
+        program = glCreateProgram();
+        glAttachShader(program, vs);
+        glAttachShader(program, fs);
+        glLinkProgram(program);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+
+        float quadVerts[] = {
+            -0.5f, 0.0f, 0.0f,  0.0f, 0.0f,
+             0.5f, 0.0f, 0.0f,  1.0f, 0.0f,
+             0.5f, 1.0f, 0.0f,  1.0f, 1.0f,
+            -0.5f, 0.0f, 0.0f,  0.0f, 0.0f,
+             0.5f, 1.0f, 0.0f,  1.0f, 1.0f,
+            -0.5f, 1.0f, 0.0f,  0.0f, 1.0f
+        };
+
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+        glBindVertexArray(0);
+    }
+
+    void destroy() {
+        if (vao) { glDeleteVertexArrays(1, &vao); vao = 0; }
+        if (vbo) { glDeleteBuffers(1, &vbo); vbo = 0; }
+        if (program) { glDeleteProgram(program); program = 0; }
+    }
+
+    void draw(GLuint texID, const glm::vec3& pos, const glm::vec2& scale,
+              const Camera& camera, bool flashlightOn,
+              const glm::mat4& view, const glm::mat4& projection) const {
+        if (program == 0 || vao == 0 || texID == 0) return;
+
+        glm::vec3 toCam = camera.Position - pos;
+        toCam.y = 0.0f;
+        if (glm::length(toCam) < 0.0001f) {
+            toCam = glm::vec3(0.0f, 0.0f, 1.0f);
+        } else {
+            toCam = glm::normalize(toCam);
+        }
+        glm::vec3 up(0.0f, 1.0f, 0.0f);
+        glm::vec3 right = glm::normalize(glm::cross(up, toCam));
+
+        glm::mat4 model(1.0f);
+        model[0] = glm::vec4(right * scale.x, 0.0f);
+        model[1] = glm::vec4(up * scale.y, 0.0f);
+        model[2] = glm::vec4(toCam, 0.0f);
+        model[3] = glm::vec4(pos, 1.0f);
+
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+
+        glUseProgram(program);
+        glUniformMatrix4fv(glGetUniformLocation(program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(glGetUniformLocation(program, "view"), 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(model));
+        glUniform3fv(glGetUniformLocation(program, "uCamPos"), 1, glm::value_ptr(camera.Position));
+        glUniform3fv(glGetUniformLocation(program, "uCamDir"), 1, glm::value_ptr(camera.Front));
+        glUniform1i(glGetUniformLocation(program, "uFlashlightOn"), flashlightOn ? 1 : 0);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texID);
+        glUniform1i(glGetUniformLocation(program, "uMonsterTex"), 0);
+
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+    }
+};
+
+MonsterBillboardRenderer gMonsterRenderer;
+
+}
 
 Level4::Level4(Engine* engine)
     : gameEngine(engine), shader(nullptr), spriteShader(nullptr),
@@ -28,6 +201,8 @@ Level4::Level4(Engine* engine)
       pdaHeld(false), pdaOpenProgress(0.0f) {}
 
 Level4::~Level4() {
+    gMonsterRenderer.destroy();
+
     if (shader) delete shader;
     if (spriteShader) delete spriteShader;
     if (compassShader) delete compassShader;
@@ -61,14 +236,15 @@ Level4::~Level4() {
     if (floorTexture != 0) glDeleteTextures(1, &floorTexture);
     if (ceilTexture != 0) glDeleteTextures(1, &ceilTexture);
     if (monsterTex1 != 0) glDeleteTextures(1, &monsterTex1);
-    if (monsterTex2 != 0) glDeleteTextures(1, &monsterTex2);
+    if (monsterTex2 != 0 && monsterTex2 != monsterTex1) glDeleteTextures(1, &monsterTex2);
 
     Sprite::CleanupSharedMesh();
 }
 
 void Level4::playSoundSafe(const std::string& path) {
-    if (audio && std::filesystem::exists(path)) {
-        audio->playSound(path.c_str());
+    std::string resolved = ResolveAssetPath4(path);
+    if (audio && std::filesystem::exists(resolved)) {
+        audio->playSound(resolved.c_str());
     }
 }
 
@@ -83,16 +259,14 @@ GLuint Level4::createFallbackMonsterTexture() {
             float ny = static_cast<float>(y) / static_cast<float>(h);
             int idx = (y * w + x) * 4;
 
-            // Вытянутый темный силуэт с рваным низом
             float widthLimit = (ny > 0.78f) ? 0.35f : (0.55f - 0.15f * std::sin(ny * 10.0f));
             if (std::abs(nx) < widthLimit && ny > (0.06f + 0.05f * std::sin(x * 1.7f))) {
-                pixels[idx + 0] = 18;
-                pixels[idx + 1] = 15;
-                pixels[idx + 2] = 20;
-                pixels[idx + 3] = 240;
+                pixels[idx + 0] = 28;
+                pixels[idx + 1] = 24;
+                pixels[idx + 2] = 32;
+                pixels[idx + 3] = 255;
             }
 
-            // Два светящихся красных глаза
             if (ny > 0.80f && ny < 0.85f &&
                 ((x >= 10 && x <= 12) || (x >= 19 && x <= 21))) {
                 pixels[idx + 0] = 255;
@@ -115,9 +289,10 @@ GLuint Level4::createFallbackMonsterTexture() {
 }
 
 GLuint Level4::loadTexture(const char* path, bool clampToEdge, bool allowMissing) {
+    std::string resolved = ResolveAssetPath4(path);
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(true);
-    unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load(resolved.c_str(), &width, &height, &nrChannels, 0);
 
     if (!data && allowMissing) {
         return 0;
@@ -128,9 +303,10 @@ GLuint Level4::loadTexture(const char* path, bool clampToEdge, bool allowMissing
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     GLint wrapMode = clampToEdge ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    GLint minFilter = clampToEdge ? GL_NEAREST : GL_NEAREST_MIPMAP_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapMode);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapMode);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     if (data) {
@@ -139,7 +315,7 @@ GLuint Level4::loadTexture(const char* path, bool clampToEdge, bool allowMissing
         glGenerateMipmap(GL_TEXTURE_2D);
         stbi_image_free(data);
     } else {
-        std::cout << "Fallback texture for: " << path << std::endl;
+        std::cout << "Failed to load texture: " << resolved << " (" << stbi_failure_reason() << ")" << std::endl;
         unsigned char fallback[4] = { 75, 78, 72, 255 };
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, fallback);
     }
@@ -165,9 +341,6 @@ void Level4::initPs1Framebuffer() {
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, PS1_WIDTH, PS1_HEIGHT);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ps1DepthRBO);
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cout << "ERROR: PS1 Framebuffer is not complete!" << std::endl;
-    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     float screenVerts[] = {
@@ -201,6 +374,7 @@ void Level4::init() {
     compassShader = new Shader("shaders/compass.vert", "shaders/compass.frag");
     ps1PostShader = new Shader("shaders/ps1_post.vert", "shaders/ps1_post.frag");
 
+    gMonsterRenderer.init();
     initPs1Framebuffer();
 
     const int mazeSize = 25;
@@ -217,7 +391,6 @@ void Level4::init() {
     floorTexture = loadTexture("textures/lvl4_tex/lvl4_floor.png");
     ceilTexture  = loadTexture("textures/lvl4_tex/lvl4_ceil.png");
 
-    // Текстуры монстра (с авто-фоллбэком на спрайт манекена из Level3 или процедурный силуэт)
     monsterTex1 = loadTexture("textures/lvl4_tex/lvl4_monster.png", true, true);
     if (monsterTex1 == 0) {
         monsterTex1 = loadTexture("textures/lvl3_tex/lvl3_sprite_2.png", true, true);
@@ -267,7 +440,6 @@ void Level4::init() {
     switchBoxMesh   = PrimitiveMesh::CreateBox(0.24f, 0.34f, 0.10f);
     switchLeverMesh = PrimitiveMesh::CreateBox(0.04f, 0.18f, 0.04f);
 
-    // Треугольник игрока для КПК
     float compassVertices[] = { 0.0f, 8.0f, -5.5f, -6.0f, 5.5f, -6.0f };
     glGenVertexArrays(1, &compassVAO);
     glGenBuffers(1, &compassVBO);
@@ -278,7 +450,6 @@ void Level4::init() {
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
 
-    // Единичный квадрат [0..1] для отрисовки элементов КПК
     float pdaQuadVerts[] = {
         0.0f, 0.0f,  1.0f, 0.0f,  1.0f, 1.0f,
         0.0f, 0.0f,  1.0f, 1.0f,  0.0f, 1.0f
@@ -428,7 +599,6 @@ void Level4::updateMonsterAI(float deltaTime) {
     glm::vec2 pPos2D(camera.Position.x, camera.Position.z);
     float distToPlayer = glm::distance(mPos2D, pPos2D);
 
-    // Анимация билборда монстра
     monster.animTimer += deltaTime * (monster.state == MonsterState::CHASE ? 1.8f : 1.0f);
     if (monster.animTimer >= 0.32f) {
         monster.animTimer = 0.0f;
@@ -438,7 +608,6 @@ void Level4::updateMonsterAI(float deltaTime) {
         }
     }
 
-    // Проверка обнаружения игрока (фонарик увеличивает заметность, бег создает шум)
     float sightRange = flashlightOn ? 9.5f : 5.5f;
     bool canSee = !noclip && (distToPlayer <= sightRange) && hasLineOfSight(monster.pos, camera.Position);
     bool canHearSprint = !noclip && isSprinting && (distToPlayer <= 4.5f);
@@ -446,7 +615,7 @@ void Level4::updateMonsterAI(float deltaTime) {
     if (canSee || canHearSprint) {
         if (monster.state != MonsterState::CHASE) {
             playSoundSafe("sounds/Level4/Monster_Alert.wav");
-            if (!std::filesystem::exists("sounds/Level4/Monster_Alert.wav")) {
+            if (!std::filesystem::exists(ResolveAssetPath4("sounds/Level4/Monster_Alert.wav"))) {
                 playSoundSafe("sounds/Level4/Trigger_1.wav");
             }
         }
@@ -454,14 +623,12 @@ void Level4::updateMonsterAI(float deltaTime) {
         monster.loseSightTimer = 4.0f;
     }
 
-    // Периодические звуки присутствия рядом с игроком
     monster.groanTimer -= deltaTime;
     if (monster.groanTimer <= 0.0f && distToPlayer < 9.0f) {
         playSoundSafe("sounds/Level4/Monster_Groan.wav");
         monster.groanTimer = (monster.state == MonsterState::CHASE) ? 3.2f : 6.5f;
     }
 
-    // Выбор следующей клетки маршрута
     if (!monster.hasTarget || glm::distance(mPos2D, glm::vec2(monster.targetPos.x, monster.targetPos.z)) < 0.08f) {
         int mx = std::clamp(static_cast<int>(monster.pos.x), 1, cols - 2);
         int mz = std::clamp(static_cast<int>(monster.pos.z), 1, rows - 2);
@@ -485,7 +652,6 @@ void Level4::updateMonsterAI(float deltaTime) {
 
             if (!validNeighbors.empty()) {
                 static std::mt19937 aiGen(std::random_device{}());
-                // Если монстр ушел слишком далеко от игрока, подтягиваем его поближе
                 if (distToPlayer > 8.5f && (aiGen() % 100) < 75) {
                     std::sort(validNeighbors.begin(), validNeighbors.end(), [&](const glm::ivec2& a, const glm::ivec2& b) {
                         float da = glm::distance(glm::vec2(a.x + 0.5f, a.y + 0.5f), pPos2D);
@@ -504,7 +670,6 @@ void Level4::updateMonsterAI(float deltaTime) {
         monster.hasTarget = true;
     }
 
-    // Движение монстра к текущей путевой точке
     glm::vec2 target2D(monster.targetPos.x, monster.targetPos.z);
     glm::vec2 dir = target2D - mPos2D;
     float len = glm::length(dir);
@@ -516,18 +681,15 @@ void Level4::updateMonsterAI(float deltaTime) {
     }
 
     if (monsterSprite) {
-        // Легкое покачивание при ходьбе
         float bob = std::abs(std::sin(elapsedTime * (monster.state == MonsterState::CHASE ? 11.0f : 6.0f))) * 0.03f;
         monsterSprite->Position = glm::vec3(monster.pos.x, bob, monster.pos.z);
     }
 
-    // Проверка поимки игрока
     if (!noclip && glm::distance(glm::vec2(monster.pos.x, monster.pos.z), pPos2D) < 0.55f) {
         playSoundSafe("sounds/Level4/Monster_Catch.wav");
-        if (!std::filesystem::exists("sounds/Level4/Monster_Catch.wav")) {
+        if (!std::filesystem::exists(ResolveAssetPath4("sounds/Level4/Monster_Catch.wav"))) {
             playSoundSafe("sounds/Level4/Trigger_2.wav");
         }
-        std::cout << "CAUGHT BY THE STALKER! Respawning at entrance..." << std::endl;
         camera.SetPose(glm::vec3(1.5f, 0.5f, 1.5f), -90.0f, 0.0f);
         stamina = maxStamina;
         isExhausted = false;
@@ -693,7 +855,6 @@ void Level4::processInput(GLFWwindow* window, float deltaTime) {
             if (!powerRestored && glm::distance(camera.Position, breakerPos) < 1.8f) {
                 powerRestored = true;
                 playSoundSafe("sounds/Level4/Flashlight.wav");
-                std::cout << "Power restored! Exit unlocked." << std::endl;
             }
         }
     } else {
@@ -850,7 +1011,6 @@ void Level4::update(float deltaTime) {
     bool nearExit = (glm::distance(player2D, exitCenter) < 0.85f);
 
     if (powerRestored && (inExitCell || nearExit)) {
-        std::cout << "LEVEL 4 COMPLETE! Rolling credits..." << std::endl;
         gameEngine->changeLevel(new CreditsLevel(gameEngine));
         return;
     }
@@ -871,7 +1031,6 @@ void Level4::drawPdaRect(float x, float y, float w, float h, const glm::vec4& co
 }
 
 void Level4::renderPDA(int screenW, int screenH) {
-    // Если КПК полностью опущен — ничего не рисуем
     if (pdaOpenProgress <= 0.01f) return;
 
     glDisable(GL_DEPTH_TEST);
@@ -880,11 +1039,9 @@ void Level4::renderPDA(int screenW, int screenH) {
 
     glm::mat4 orthoProj = glm::ortho(0.0f, static_cast<float>(screenW), 0.0f, static_cast<float>(screenH));
 
-    // Лёгкое затемнение фона, пока игрок смотрит в экран КПК
     drawPdaRect(0.0f, 0.0f, static_cast<float>(screenW), static_cast<float>(screenH),
                 glm::vec4(0.0f, 0.0f, 0.0f, 0.35f * pdaOpenProgress), orthoProj);
 
-    // Крупный корпус КПК по центру экрана, выезжающий снизу
     const float pdaW = 340.0f;
     const float pdaH = 380.0f;
     const float pdaX = (static_cast<float>(screenW) - pdaW) * 0.5f;
@@ -897,7 +1054,6 @@ void Level4::renderPDA(int screenW, int screenH) {
     float distToMonster = glm::distance(glm::vec2(camera.Position.x, camera.Position.z),
                                         glm::vec2(monster.pos.x, monster.pos.z));
 
-    // 1. Корпус и рамка устройства
     glm::vec4 borderCol = isChasing
         ? glm::vec4(0.95f, 0.20f, 0.20f, 0.92f)
         : glm::vec4(0.22f, 0.78f, 0.42f, 0.85f);
@@ -905,7 +1061,6 @@ void Level4::renderPDA(int screenW, int screenH) {
     drawPdaRect(pdaX - 4.0f, pdaY - 4.0f, pdaW + 8.0f, pdaH + 8.0f, borderCol, orthoProj);
     drawPdaRect(pdaX, pdaY, pdaW, pdaH, glm::vec4(0.04f, 0.07f, 0.05f, 0.93f), orthoProj);
 
-    // 2. Полоска стамины в нижней части КПК
     float barX = pdaX + 16.0f;
     float barY = pdaY + 16.0f;
     float barW = pdaW - 32.0f;
@@ -918,7 +1073,6 @@ void Level4::renderPDA(int screenW, int screenH) {
         : (stamRatio < 0.35f ? glm::vec4(0.95f, 0.75f, 0.20f, 0.95f) : glm::vec4(0.25f, 0.90f, 0.48f, 0.95f));
     drawPdaRect(barX + 2.0f, barY + 2.0f, (barW - 4.0f) * stamRatio, barH - 4.0f, stamColor, orthoProj);
 
-    // 3. Экран локального радара (308x308 px)
     float mapX = pdaX + 16.0f;
     float mapY = pdaY + 42.0f;
     float mapSize = pdaW - 32.0f;
@@ -934,11 +1088,6 @@ void Level4::renderPDA(int screenW, int screenH) {
     const float radarRadiusCells = 6.5f;
     const float cellPx = (mapSize * 0.5f) / radarRadiusCells;
 
-    float mapRot = glm::radians(camera.Yaw) + glm::half_pi<float>();
-    float cosR = std::cos(mapRot);
-    float sinR = std::sin(mapRot);
-
-    // Векторы направления взгляда и правой стороны в горизонтальной плоскости (X, Z)
     glm::vec2 fwd2D(camera.Front.x, camera.Front.z);
     if (glm::length(fwd2D) > 0.0001f) fwd2D = glm::normalize(fwd2D);
     else fwd2D = glm::vec2(0.0f, -1.0f);
@@ -949,19 +1098,17 @@ void Level4::renderPDA(int screenW, int screenH) {
 
     auto worldToRadar = [&](float wx, float wz) -> glm::vec2 {
         glm::vec2 d(wx - camera.Position.x, wz - camera.Position.z);
-        float rx = glm::dot(d, right2D); // смещение вправо от игрока
-        float ry = glm::dot(d, fwd2D);   // смещение вперёд от игрока
+        float rx = glm::dot(d, right2D);
+        float ry = glm::dot(d, fwd2D);
         return glm::vec2(mapCenterX + rx * cellPx, mapCenterY + ry * cellPx);
     };
 
-    // Сетка прицела и бегущая линия сканирования
     drawPdaRect(mapCenterX - 0.5f, mapY, 1.0f, mapSize, glm::vec4(0.15f, 0.40f, 0.22f, 0.35f), orthoProj);
     drawPdaRect(mapX, mapCenterY - 0.5f, mapSize, 1.0f, glm::vec4(0.15f, 0.40f, 0.22f, 0.35f), orthoProj);
 
     float sweepOffset = std::fmod(elapsedTime * 140.0f, mapSize);
     drawPdaRect(mapX, mapY + sweepOffset, mapSize, 2.0f, glm::vec4(0.25f, 0.90f, 0.45f, 0.22f), orthoProj);
 
-    // Отрисовка стен и выхода в ограниченном радиусе вокруг игрока
     const auto& grid = maze->getGrid();
     int rows = static_cast<int>(grid.size());
     int cols = static_cast<int>(grid[0].size());
@@ -1002,14 +1149,12 @@ void Level4::renderPDA(int screenW, int screenH) {
         }
     }
 
-    // Жёлтая метка рубильника
     if (!powerRestored && glm::distance(glm::vec2(breakerPos.x, breakerPos.z),
                                         glm::vec2(camera.Position.x, camera.Position.z)) <= radarRadiusCells) {
         glm::vec2 bScreen = worldToRadar(breakerPos.x, breakerPos.z);
         drawPdaRect(bScreen.x - 5.0f, bScreen.y - 5.0f, 10.0f, 10.0f, glm::vec4(0.98f, 0.85f, 0.20f, 0.98f), orthoProj);
     }
 
-    // Пульсирующая красная метка монстра
     if (distToMonster <= radarRadiusCells + 0.5f) {
         glm::vec2 mScreen = worldToRadar(monster.pos.x, monster.pos.z);
         float pulse = 0.55f + 0.45f * std::sin(elapsedTime * 12.0f);
@@ -1020,7 +1165,6 @@ void Level4::renderPDA(int screenW, int screenH) {
 
     glDisable(GL_SCISSOR_TEST);
 
-    // 4. Стрелка игрока в центре КПК
     compassShader->use();
     compassShader->setMat4("projection", orthoProj);
     glm::mat4 modelPlayer = glm::translate(glm::mat4(1.0f), glm::vec3(mapCenterX, mapCenterY, 0.0f));
@@ -1040,25 +1184,17 @@ void Level4::render() {
     glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
     if (width <= 0 || height <= 0) return;
 
-    // 1. Рендерим 3D-сцену в низкополигональный PS1-буфер 320x240
-    glBindFramebuffer(GL_FRAMEBUFFER, ps1FBO);
-    glViewport(0, 0, PS1_WIDTH, PS1_HEIGHT);
-
-    // 2. Выводим PS1-буфер на основной экран с дизерингом и квантованием цвета
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
-    glDisable(GL_DEPTH_TEST);
-    glClearColor(0.01f, 0.01f, 0.015f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glClearColor(0.01f, 0.01f, 0.015f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
 
-    glm::mat4 projection = glm::perspective(glm::radians(60.0f),
-                                            static_cast<float>(PS1_WIDTH) / static_cast<float>(PS1_HEIGHT),
-                                            0.1f, 100.0f);
+    float aspect = static_cast<float>(width) / static_cast<float>(height);
+    glm::mat4 projection = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
     glm::mat4 view = camera.GetViewMatrix();
 
     shader->use();
@@ -1160,36 +1296,28 @@ void Level4::render() {
 
     shader->setInt("useSolidColor", 0);
 
-    // Отрисовка билборд-спрайта монстра внутри PS1-буфера
-    if (monsterSprite) {
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        monsterSprite->Draw(spriteShader, camera.Position, view, projection);
-        glDisable(GL_BLEND);
-    }
-
-    // 2. Выводим PS1-буфер на основной экран с дизерингом и квантованием цвета
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, width, height);
-    glDisable(GL_DEPTH_TEST);
+    GLuint activeMonsterTex = (monster.animFrame == 0) ? monsterTex1 : monsterTex2;
+    glm::vec3 drawPos = monsterSprite ? monsterSprite->Position : monster.pos;
+    glm::vec2 drawScale = monsterSprite ? monsterSprite->Scale : glm::vec2(0.68f, 0.92f);
+    gMonsterRenderer.draw(activeMonsterTex, drawPos, drawScale, camera, flashlightOn, view, projection);
 
     float distToMonster = glm::distance(glm::vec2(camera.Position.x, camera.Position.z),
                                         glm::vec2(monster.pos.x, monster.pos.z));
     float danger = (monster.state == MonsterState::CHASE)
-        ? 1.0f
-        : std::clamp((6.0f - distToMonster) / 6.0f, 0.0f, 0.65f);
-    danger = std::max(danger, catchFlashTimer);
+        ? 0.22f
+        : std::clamp((5.0f - distToMonster) / 5.0f, 0.0f, 0.14f);
+    danger = std::max(danger, catchFlashTimer * 0.45f);
 
-    ps1PostShader->use();
-    ps1PostShader->setInt("screenTexture", 0);
-    ps1PostShader->setFloat("dangerIntensity", danger);
-    ps1PostShader->setFloat("time", elapsedTime);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, ps1ColorTex);
-    glBindVertexArray(screenQuadVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
+    if (danger > 0.005f) {
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glm::mat4 orthoProj = glm::ortho(0.0f, static_cast<float>(width), 0.0f, static_cast<float>(height));
+        drawPdaRect(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height),
+                    glm::vec4(0.65f, 0.04f, 0.04f, danger), orthoProj);
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+    }
 
     renderPDA(width, height);
 }

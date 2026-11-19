@@ -18,6 +18,10 @@ public:
     }
 
     void Draw(Shader* shader, const glm::vec3& cameraPos, const glm::mat4& view, const glm::mat4& projection) const {
+        if (s_VAO == 0) {
+            initQuad();
+        }
+
         glm::vec3 toCamera = cameraPos - Position;
         toCamera.y = 0.0f;
 

@@ -8,6 +8,13 @@
 #include <cmath>
 #include <filesystem>
 
+static std::string ResolveAssetPath3(const std::string& relPath) {
+    if (std::filesystem::exists(relPath)) return relPath;
+    std::string parentPath = "../" + relPath;
+    if (std::filesystem::exists(parentPath)) return parentPath;
+    return relPath;
+}
+
 Level3::Level3(Engine* engine)
     : gameEngine(engine), shader(nullptr), surfaceShader(nullptr),
       spriteShader(nullptr), compassShader(nullptr),
@@ -56,12 +63,12 @@ Level3::~Level3() {
 }
 
 void Level3::playSoundSafe(const std::string& path) {
-    if (audio && std::filesystem::exists(path)) {
-        audio->playSound(path.c_str());
+    std::string resolved = ResolveAssetPath3(path);
+    if (audio && std::filesystem::exists(resolved)) {
+        audio->playSound(resolved.c_str());
     }
 }
 
-// frameType: 0 = Idle, 1 = Fire (с вспышкой), 2 = Reload (перелом стволов + 2 красные гильзы)
 GLuint Level3::createProceduralShotgunTexture(int frameType) {
     const int w = 64;
     const int h = 64;
@@ -79,7 +86,6 @@ GLuint Level3::createProceduralShotgunTexture(int frameType) {
     if (frameType == 0 || frameType == 1) {
         int yShift = (frameType == 1) ? -4 : 0;
 
-        // Вспышка выстрела (рисуем за стволами)
         if (frameType == 1) {
             int cx = 32;
             int cy = 44;
@@ -93,17 +99,16 @@ GLuint Level3::createProceduralShotgunTexture(int frameType) {
                     float rNorm = dist / (18.0f * rays);
 
                     if (rNorm < 0.42f) {
-                        setPixel(x, y, 255, 255, 220, 255); // Ядро вспышки
+                        setPixel(x, y, 255, 255, 220, 255);
                     } else if (rNorm < 0.72f) {
-                        setPixel(x, y, 255, 195, 45, 245);  // Жёлтый огонь
+                        setPixel(x, y, 255, 195, 45, 245);
                     } else if (rNorm < 0.98f) {
-                        setPixel(x, y, 235, 85, 20, 210);   // Оранжевые края
+                        setPixel(x, y, 235, 85, 20, 210);
                     }
                 }
             }
         }
 
-        // Деревянный приклад / цевьё (внизу)
         for (int y = 0; y <= 17 + yShift; ++y) {
             int halfW = 10 - (y / 6);
             for (int x = 32 - halfW; x <= 32 + halfW; ++x) {
@@ -112,37 +117,30 @@ GLuint Level3::createProceduralShotgunTexture(int frameType) {
             }
         }
 
-        // Два спаренных ствола двустволки
         for (int y = 14 + yShift; y <= 43 + yShift; ++y) {
-            int taper = (y - (14 + yShift)) / 10; // лёгкое сужение к дулу
+            int taper = (y - (14 + yShift)) / 10;
             int leftStart  = 24 + taper;
             int leftEnd    = 31;
             int rightStart = 32;
             int rightEnd   = 39 - taper;
 
-            // Левый ствол
             for (int x = leftStart; x <= leftEnd; ++x) {
                 bool highlight = (x == leftStart + 2 || x == leftStart + 3);
                 unsigned char c = highlight ? 128 : 68;
                 setPixel(x, y, c, c, static_cast<unsigned char>(c + 8));
             }
-            // Правый ствол
             for (int x = rightStart; x <= rightEnd; ++x) {
                 bool highlight = (x == rightEnd - 2 || x == rightEnd - 3);
                 unsigned char c = highlight ? 128 : 68;
                 setPixel(x, y, c, c, static_cast<unsigned char>(c + 8));
             }
-            // Центральная прицельная планка между стволами
             setPixel(31, y, 42, 42, 46);
             setPixel(32, y, 42, 42, 46);
         }
 
-        // Мушка на конце стволов
         setPixel(31, 44 + yShift, 190, 175, 90);
         setPixel(32, 44 + yShift, 190, 175, 90);
     } else {
-        // frameType == 2: Перезарядка (переломленные стволы + 2 красных патрона)
-        // Приклад снизу
         for (int y = 0; y <= 18; ++y) {
             for (int x = 22; x <= 41; ++x) {
                 unsigned char shade = static_cast<unsigned char>(92 + ((x * 3 + y) % 3) * 12);
@@ -150,28 +148,25 @@ GLuint Level3::createProceduralShotgunTexture(int frameType) {
             }
         }
 
-        // Казённик (открытый узел перелома)
         for (int y = 18; y <= 25; ++y) {
             for (int x = 23; x <= 40; ++x) {
                 setPixel(x, y, 52, 54, 60);
             }
         }
 
-        // Два красных патрона 12-го калибра с латунными донцами
         for (int shell = 0; shell < 2; ++shell) {
             int sx = (shell == 0) ? 26 : 34;
             for (int y = 24; y <= 33; ++y) {
                 for (int x = sx; x <= sx + 3; ++x) {
                     if (y <= 26) {
-                        setPixel(x, y, 225, 185, 55); // Латунь
+                        setPixel(x, y, 225, 185, 55);
                     } else {
-                        setPixel(x, y, 205, 32, 32);  // Красная гильза
+                        setPixel(x, y, 205, 32, 32);
                     }
                 }
             }
         }
 
-        // Откинутые вперёд и вниз стволы
         for (int y = 10; y <= 23; ++y) {
             for (int x = 24; x <= 39; ++x) {
                 if (x == 31 || x == 32) {
@@ -195,9 +190,10 @@ GLuint Level3::createProceduralShotgunTexture(int frameType) {
 }
 
 GLuint Level3::loadTexture(const char* path, bool clampToEdge, bool allowMissing) {
+    std::string resolved = ResolveAssetPath3(path);
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(true);
-    unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load(resolved.c_str(), &width, &height, &nrChannels, 0);
 
     if (!data && allowMissing) {
         return 0;
@@ -208,21 +204,19 @@ GLuint Level3::loadTexture(const char* path, bool clampToEdge, bool allowMissing
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     GLint wrapMode = clampToEdge ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    GLint minFilter = clampToEdge ? GL_NEAREST : GL_NEAREST_MIPMAP_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapMode);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapMode);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     if (data) {
-        GLenum format = GL_RGB;
-        if (nrChannels == 1) format = GL_RED;
-        else if (nrChannels == 4) format = GL_RGBA;
-
+        GLenum format = (nrChannels == 4) ? GL_RGBA : (nrChannels == 1 ? GL_RED : GL_RGB);
         glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
         stbi_image_free(data);
     } else {
-        std::cout << "Failed to load texture at path: " << path << std::endl;
+        std::cout << "Failed to load texture: " << path << " (" << stbi_failure_reason() << ")" << std::endl;
         unsigned char fallback[4] = { 90, 90, 95, 255 };
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, fallback);
     }
@@ -259,7 +253,6 @@ void Level3::init() {
     barrelTexture = loadTexture("textures/lvl3_tex/lvl3_sprite_1.png", true);
     mannequinTexture = loadTexture("textures/lvl3_tex/lvl3_sprite_2.png", true);
 
-    // Загрузка текстур двустволки (или процедурный Doom-пиксельарт, если файлов пока нет)
     shotgunIdleTex = loadTexture("textures/lvl3_tex/shotgun_idle.png", true, true);
     if (shotgunIdleTex == 0) shotgunIdleTex = createProceduralShotgunTexture(0);
 
@@ -334,42 +327,31 @@ void Level3::init() {
 
     glGenVertexArrays(1, &floorCeilVAO);
     glGenBuffers(1, &floorCeilVBO);
-
     glBindVertexArray(floorCeilVAO);
     glBindBuffer(GL_ARRAY_BUFFER, floorCeilVBO);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 
-    float compassVertices[] = {
-         0.0f,  15.0f,
-        -10.0f, -10.0f,
-         10.0f, -10.0f
-    };
-
+    float compassVertices[] = { 0.0f, 15.0f, -10.0f, -10.0f, 10.0f, -10.0f };
     glGenVertexArrays(1, &compassVAO);
     glGenBuffers(1, &compassVBO);
-
     glBindVertexArray(compassVAO);
     glBindBuffer(GL_ARRAY_BUFFER, compassVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(compassVertices), compassVertices, GL_STATIC_DRAW);
-
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
 
-    // Крестик прицела (2 пересекающихся прямоугольника)
     float crossVerts[] = {
         -6.0f, -1.0f,   6.0f, -1.0f,   6.0f,  1.0f,
         -6.0f, -1.0f,   6.0f,  1.0f,  -6.0f,  1.0f,
         -1.0f, -6.0f,   1.0f, -6.0f,   1.0f,  6.0f,
         -1.0f, -6.0f,   1.0f,  6.0f,  -1.0f,  6.0f
     };
-
     glGenVertexArrays(1, &crosshairVAO);
     glGenBuffers(1, &crosshairVBO);
     glBindVertexArray(crosshairVAO);
@@ -382,7 +364,10 @@ void Level3::init() {
     spawnSprites(1.8f, 22);
 
     audio = new Audio(1);
-    audio->playMusic("sounds/lvl3_sound/lvl3_ambient.mp3");
+    std::string musicPath = ResolveAssetPath3("sounds/lvl3_sound/lvl3_ambient.mp3");
+    if (std::filesystem::exists(musicPath)) {
+        audio->playMusic(musicPath.c_str());
+    }
 }
 
 void Level3::spawnSprites(float minDistance, int maxCount) {
@@ -402,8 +387,7 @@ void Level3::spawnSprites(float minDistance, int maxCount) {
         }
     }
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    std::mt19937 gen(std::random_device{}());
     std::shuffle(candidates.begin(), candidates.end(), gen);
     std::uniform_int_distribution<int> typeDist(0, 1);
 
@@ -428,7 +412,7 @@ void Level3::spawnSprites(float minDistance, int maxCount) {
             entities.push_back({
                 Sprite(glm::vec3(candidate.x, 0.0f, candidate.y), scale, tex),
                 isMannequin,
-                isMannequin ? 2 : 1, // Манекен выдерживает 2 выстрела из двустволки
+                isMannequin ? 2 : 1,
                 0.0f,
                 false
             });
@@ -448,14 +432,11 @@ bool Level3::checkCollision(float x, float z) const {
     if (minX < 0 || maxX >= static_cast<int>(grid[0].size()) ||
         minZ < 0 || maxZ >= static_cast<int>(grid.size())) return true;
 
-    if (grid[minZ][minX] == 1) return true;
-    if (grid[minZ][maxX] == 1) return true;
-    if (grid[maxZ][minX] == 1) return true;
-    if (grid[maxZ][maxX] == 1) return true;
+    if (grid[minZ][minX] == 1 || grid[minZ][maxX] == 1 ||
+        grid[maxZ][minX] == 1 || grid[maxZ][maxX] == 1) return true;
 
-    // Неразрушенные манекены (второй спрайт) блокируют проход
     glm::vec2 playerPos(x, z);
-    const float blockRadius = 0.48f; // радиус игрока (0.20) + радиус манекена (0.28)
+    const float blockRadius = 0.48f;
     for (const auto& ent : entities) {
         if (ent.isMannequin && !ent.destroyed) {
             glm::vec2 entPos(ent.sprite.Position.x, ent.sprite.Position.z);
@@ -491,28 +472,26 @@ bool Level3::hasLineOfSight(const glm::vec3& from, const glm::vec3& to) const {
 }
 
 void Level3::tryShootShotgun() {
-    // Нельзя стрелять во время кулдауна выстрела или перезарядки
     if (shotgunState != ShotgunState::IDLE || shellsInClip <= 0) {
         return;
     }
 
     shellsInClip--;
     shotgunState = ShotgunState::FIRING;
-    shotgunTimer = 0.24f; // Кулдаун между выстрелами стволов
+    shotgunTimer = 0.24f;
 
     playSoundSafe("sounds/lvl3_sound/shotgun_fire.wav");
-    if (!std::filesystem::exists("sounds/lvl3_sound/shotgun_fire.wav")) {
+    if (!std::filesystem::exists(ResolveAssetPath3("sounds/lvl3_sound/shotgun_fire.wav"))) {
         playSoundSafe("sounds/lvl3_sound/lvl3_footstep.wav");
     }
 
-    // Проверка попадания в ближайший манекен по линии взгляда
     glm::vec2 fwd2D(camera.Front.x, camera.Front.z);
     if (glm::length(fwd2D) > 0.0001f) {
         fwd2D = glm::normalize(fwd2D);
     }
 
     int bestIdx = -1;
-    float bestDist = 4.2f; // Максимальная дальность дроби
+    float bestDist = 4.2f;
 
     for (size_t i = 0; i < entities.size(); ++i) {
         auto& ent = entities[i];
@@ -538,9 +517,6 @@ void Level3::tryShootShotgun() {
         if (target.hp <= 0) {
             target.destroyed = true;
             playSoundSafe("sounds/lvl3_sound/mannequin_break.wav");
-            std::cout << "Mannequin destroyed! Path clear." << std::endl;
-        } else {
-            std::cout << "Mannequin hit! (1 more shot needed)" << std::endl;
         }
     }
 }
@@ -555,13 +531,11 @@ void Level3::processInput(GLFWwindow* window, float deltaTime) {
         if (!fKeyPressed) {
             noclip = !noclip;
             fKeyPressed = true;
-            std::cout << "Level 3 Noclip: " << (noclip ? "ON" : "OFF") << std::endl;
         }
     } else {
         fKeyPressed = false;
     }
 
-    // Выстрел из двустволки по ЛКМ (или Enter)
     bool shootPressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) ||
                         (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
     if (shootPressed) {
@@ -573,7 +547,6 @@ void Level3::processInput(GLFWwindow* window, float deltaTime) {
         mouseLeftPressed = false;
     }
 
-    // Ручная перезарядка на R, если один патрон уже отстрелян
     if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
         if (!rKeyPressed) {
             if (shotgunState == ShotgunState::IDLE && shellsInClip < 2) {
@@ -602,12 +575,9 @@ void Level3::processInput(GLFWwindow* window, float deltaTime) {
         firstMouse = false;
     }
 
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos;
+    camera.ProcessMouseMovement(xpos - lastX, lastY - ypos);
     lastX = xpos;
     lastY = ypos;
-
-    camera.ProcessMouseMovement(xoffset, yoffset);
 
     if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)  camera.ProcessMouseMovement(-150.0f * deltaTime, 0.0f);
     if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) camera.ProcessMouseMovement(150.0f * deltaTime, 0.0f);
@@ -633,7 +603,7 @@ void Level3::processInput(GLFWwindow* window, float deltaTime) {
             if (camera.IsGrounded) {
                 stepTimer += deltaTime;
                 if (stepTimer > 0.4f) {
-                    audio->playSound("sounds/lvl3_sound/lvl3_footstep.wav");
+                    playSoundSafe("sounds/lvl3_sound/lvl3_footstep.wav");
                     stepTimer = 0.0f;
                 }
             }
@@ -641,7 +611,6 @@ void Level3::processInput(GLFWwindow* window, float deltaTime) {
             moveDir.y = 0.0f;
             if (glm::length(moveDir) > 0.0001f) {
                 moveDir = glm::normalize(moveDir) * velocity;
-
                 if (!checkCollision(camera.Position.x + moveDir.x, camera.Position.z)) {
                     camera.Position.x += moveDir.x;
                 }
@@ -660,14 +629,12 @@ void Level3::update(float deltaTime) {
         camera.UpdatePhysics(deltaTime);
     }
 
-    // Таймеры состояния и перезарядки двустволки
     if (shotgunTimer > 0.0f) {
         shotgunTimer -= deltaTime;
         if (shotgunTimer <= 0.0f) {
             shotgunTimer = 0.0f;
             if (shotgunState == ShotgunState::FIRING) {
                 if (shellsInClip <= 0) {
-                    // Оба ствола пусты — запускаем перезарядку с кулдауном
                     shotgunState = ShotgunState::RELOADING;
                     shotgunTimer = 0.85f;
                     playSoundSafe("sounds/lvl3_sound/shotgun_reload.wav");
@@ -681,7 +648,6 @@ void Level3::update(float deltaTime) {
         }
     }
 
-    // Анимация вздрагивания подстреленного манекена
     for (auto& ent : entities) {
         if (ent.hitFlashTimer > 0.0f) {
             ent.hitFlashTimer = std::max(0.0f, ent.hitFlashTimer - deltaTime);
@@ -695,10 +661,8 @@ void Level3::update(float deltaTime) {
     if (playerGridZ >= 0 && playerGridZ < static_cast<int>(grid.size()) &&
         playerGridX >= 0 && playerGridX < static_cast<int>(grid[0].size())) {
         if (grid[playerGridZ][playerGridX] == 2) {
-            std::cout << "=================================" << std::endl;
-            std::cout << "УРОВЕНЬ 3 ПРОЙДЕН! Переход на Эру 4!" << std::endl;
-            std::cout << "=================================" << std::endl;
             gameEngine->changeLevel(new Level4(gameEngine));
+            return;
         }
     }
 }
@@ -710,7 +674,6 @@ void Level3::renderShotgunHUD(int width, int height) {
 
     glm::mat4 orthoProj = glm::ortho(0.0f, static_cast<float>(width), 0.0f, static_cast<float>(height));
 
-    // 1. Прицел в центре экрана
     compassShader->use();
     compassShader->setMat4("projection", orthoProj);
     glm::mat4 crossModel = glm::translate(glm::mat4(1.0f), glm::vec3(width * 0.5f, height * 0.5f, 0.0f));
@@ -721,15 +684,13 @@ void Level3::renderShotgunHUD(int width, int height) {
     glDrawArrays(GL_TRIANGLES, 0, 12);
     glBindVertexArray(0);
 
-    // 2. Спрайт двустволки снизу по центру (в стиле Doom)
     GLuint activeGunTex = shotgunIdleTex;
-    float offsetY = 0.0f;
     float offsetX = std::sin(weaponBobTimer) * 14.0f;
-    offsetY -= std::abs(std::cos(weaponBobTimer)) * 8.0f;
+    float offsetY = -std::abs(std::cos(weaponBobTimer)) * 8.0f;
 
     if (shotgunState == ShotgunState::FIRING) {
         activeGunTex = shotgunFireTex;
-        offsetY -= 18.0f * (shotgunTimer / 0.24f); // Отдача вниз при выстреле
+        offsetY -= 18.0f * (shotgunTimer / 0.24f);
     } else if (shotgunState == ShotgunState::RELOADING) {
         activeGunTex = shotgunReloadTex;
         float reloadWave = std::sin((1.0f - shotgunTimer / 0.85f) * glm::pi<float>());
@@ -742,7 +703,8 @@ void Level3::renderShotgunHUD(int width, int height) {
         glm::vec2(gunSize, gunSize),
         activeGunTex
     );
-    // Передаём единичные cameraPos/view — угол поворота станет 0, и Sprite нарисуется как 2D HUD
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, activeGunTex);
     gunView.Draw(spriteShader, glm::vec3(width * 0.5f + offsetX, offsetY, 1.0f), glm::mat4(1.0f), orthoProj);
 
     glDisable(GL_BLEND);
@@ -751,7 +713,8 @@ void Level3::renderShotgunHUD(int width, int height) {
 
 void Level3::render() {
     int width, height;
-    glfwGetWindowSize(glfwGetCurrentContext(), &width, &height);
+    glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+    if (width <= 0 || height <= 0) return;
 
     glClearColor(0.05f, 0.05f, 0.07f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -802,10 +765,15 @@ void Level3::render() {
         return glm::dot(da, da) > glm::dot(db, db);
     });
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    glActiveTexture(GL_TEXTURE0);
+
     for (size_t idx : order) {
         auto& ent = entities[idx];
+        glBindTexture(GL_TEXTURE_2D, ent.sprite.TextureID);
         if (ent.hitFlashTimer > 0.0f) {
-            // Кратковременное сжатие/отшатывание манекена после первого выстрела
             Sprite hitCopy = ent.sprite;
             hitCopy.Scale.y *= 0.86f;
             hitCopy.Position.x += std::sin(ent.hitFlashTimer * 60.0f) * 0.05f;
@@ -815,10 +783,11 @@ void Level3::render() {
         }
     }
 
-    // Отрисовка двустволки и прицела поверх 3D-мира
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+
     renderShotgunHUD(width, height);
 
-    // Отрисовка компаса в правом нижнем углу
     glDisable(GL_DEPTH_TEST);
 
     compassShader->use();
@@ -828,16 +797,9 @@ void Level3::render() {
 
     float exitX = maze->getExitX() * 1.0f + 0.5f;
     float exitZ = maze->getExitY() * 1.0f + 0.5f;
+    float rotation = glm::radians(camera.Yaw) - std::atan2(exitZ - camera.Position.z, exitX - camera.Position.x);
 
-    float dirX = exitX - camera.Position.x;
-    float dirZ = exitZ - camera.Position.z;
-    float angleToExit = std::atan2(dirZ, dirX);
-    float cameraAngle = glm::radians(camera.Yaw);
-
-    float rotation = cameraAngle - angleToExit;
-
-    glm::mat4 modelCompass = glm::mat4(1.0f);
-    modelCompass = glm::translate(modelCompass, glm::vec3(width - 70.0f, 70.0f, 0.0f));
+    glm::mat4 modelCompass = glm::translate(glm::mat4(1.0f), glm::vec3(width - 70.0f, 70.0f, 0.0f));
     modelCompass = glm::scale(modelCompass, glm::vec3(1.5f, 1.5f, 1.0f));
     modelCompass = glm::rotate(modelCompass, rotation, glm::vec3(0.0f, 0.0f, 1.0f));
 
